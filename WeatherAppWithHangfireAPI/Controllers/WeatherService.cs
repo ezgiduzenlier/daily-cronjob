@@ -3,32 +3,58 @@ using WeatherAppWithHangfireAPI.Interfaces;
 using System.Text.Json;
 using WeatherAppWithHangfireAPI;
 using System.ComponentModel;
+using Hangfire;
+using Microsoft.Extensions.Logging;
 
 public class WeatherService : IWeatherService
 {
     private readonly HttpClient _httpClient;
+    private readonly ILogger<WeatherService> _logger;
     private const string API_KEY = "4576a64499cc4aa49d895435250602";
     private const string CITY = "Istanbul";
 
-    public WeatherService(HttpClient httpClient)
+    public WeatherService(HttpClient httpClient, ILogger<WeatherService> logger)
     {
         _httpClient = httpClient;
+        _logger = logger;
         _httpClient.BaseAddress = new Uri("http://api.weatherapi.com/v1/");
     }
 
-    
+
+    [Queue("weather-current")]
     [DisplayName("İstanbul Hava Durumu Raporu - {0:dd.MM.yyyy HH:mm}")]
-    public async Task<WeatherData> GetWeatherAsync()
+    public async Task GetWeatherAsync()
     {
-        var response = await MakeApiRequest("current.json");
-        return await ParseWeatherData(response);
+        try
+        {
+            _logger.LogInformation("GetWeatherAsync başladı");
+            var response = await MakeApiRequest("current.json");
+            var result = await ParseWeatherData(response);
+            _logger.LogInformation($"Hava durumu alındı: {result.Name}, Sıcaklık: {result.Main.Temp}°C, Nem: {result.Main.Humidity}%");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Hava durumu verisi alınırken hata oluştu");
+            throw new Exception($"Hava durumu verisi alınırken hata oluştu: {ex.Message}");
+        }
     }
 
+    [Queue("weather-feature")]
     [DisplayName("İstanbul 5 Günlük Hava Durumu Tahmini")]
-    public async Task<WeatherForecast[]> GetForecastAsync()
+    public async Task GetForecastAsync()
     {
-        var response = await MakeApiRequest("forecast.json", additionalParams: "&days=5");
-        return await ParseForecastData(response);
+        try
+        {
+            _logger.LogInformation("GetForecastAsync başladı");
+            var response = await MakeApiRequest("forecast.json", additionalParams: "&days=5");
+            var result = await ParseForecastData(response);
+            _logger.LogInformation($"Tahmin alındı: {result.Length} gün için veri başarıyla çekildi");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Tahmin verisi alınırken hata oluştu");
+            throw new Exception($"Tahmin verisi alınırken hata oluştu: {ex.Message}");
+        }
     }
 
     //(api isteği)
